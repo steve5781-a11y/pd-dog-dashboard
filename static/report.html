@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PD-Dog 주간 리포트</title>
+<style>
+:root{
+  --bg:#f3f2ee; --panel:#fff; --panel-2:#f8f7f4; --ink:#1b2220; --ink-2:#46514d; --muted:#6b7570;
+  --line:#e3e1db; --brand:#0e7c6b; --brand-soft:#e2f2ee; --ok:#2b8a3e; --ok-soft:#e8f6ec;
+  --crit:#c92a2a; --warn:#a85400; --warn-soft:#fff1e0; --bar:#3a6fd8; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#121614; --panel:#1a1f1d; --panel-2:#202624; --ink:#e7ece9; --ink-2:#c2cbc7; --muted:#97a29d;
+    --line:#2d3431; --brand:#4fd1b5; --brand-soft:#15302a; --ok:#69db7c; --ok-soft:#15291b;
+    --crit:#ff6b6b; --warn:#ffa94d; --warn-soft:#33240f; --bar:#7aa5ff; color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;font-size:15px;line-height:1.5}
+.wrap{max-width:960px;margin:0 auto;padding:16px;display:grid;gap:16px}
+h1,h2,h3,p{margin:0}
+h1{font-size:22px} h2{font-size:17px}
+.muted{color:var(--muted);font-size:13.5px}
+a{color:var(--brand)}
+button,input{font:inherit}
+button{cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 14px}
+:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;justify-content:space-between}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:12px}
+.head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.badge{margin-left:auto;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.badge.live{background:var(--ok-soft);color:var(--ok)}
+.badge.demo{background:var(--warn-soft);color:var(--warn)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px}
+.kpi .label{font-size:12.5px;color:var(--muted);font-weight:600}
+.kpi .value{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+.kpi .value small{font-size:13px;color:var(--muted);font-weight:600;margin-left:2px}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:600;font-size:12.5px}
+td.r,th.r{text-align:right}
+tfoot td{font-weight:800;border-top:2px solid var(--line)}
+.zero{color:var(--muted)}
+.hit{color:var(--crit);font-weight:800}
+.barcell{display:flex;align-items:center;gap:8px;min-width:160px}
+.barcell .bar{flex:1;height:8px;border-radius:99px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden}
+.barcell .fill{height:100%;background:var(--bar);border-radius:0 4px 4px 0}
+.barcell b{width:44px;text-align:right}
+.notes{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.notes li{border-left:3px solid var(--brand);padding:4px 10px;background:var(--panel-2);border-radius:0 8px 8px 0}
+.sim{display:inline-block;margin-left:6px;border-radius:999px;padding:0 6px;font-size:11px;font-weight:700;border:1px dashed var(--brand);color:var(--brand)}
+footer{font-size:12.5px;color:var(--muted);text-align:center;padding:8px 0 24px}
+@media print{
+  :root{--bg:#fff;--panel:#fff;--panel-2:#fff;--ink:#000;--muted:#555;--line:#ccc}
+  .tools,.noprint{display:none!important}
+  .wrap{max-width:none;padding:0}
+  .card{break-inside:avoid;border-color:#ccc}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <div class="muted">PD-Dog 파킨슨병 재활돌봄로봇</div>
+    <h1>주간 재활 리포트</h1>
+    <div class="muted" id="period">불러오는 중…</div>
+  </div>
+  <div class="tools">
+    <label class="muted"><input type="checkbox" id="incSim"> 시연 기록 포함</label>
+    <button onclick="window.print()">🖨️ 인쇄 / PDF 저장</button>
+    <a href="/">← 대시보드로</a>
+  </div>
+</header>
+
+<!-- 1. 안전 알람 (실시간) -->
+<section class="card">
+  <div class="head"><h2>1. 안전 알람</h2><span class="badge live">실시간 기록</span></div>
+  <div class="kpis">
+    <div class="kpi"><div class="label">위급 알람 (낙상·신고·무움직임)</div><div class="value" id="kCrit">-</div></div>
+    <div class="kpi"><div class="label">복약 미확인 알림</div><div class="value" id="kMed">-</div></div>
+    <div class="kpi"><div class="label">확인까지 평균</div><div class="value" id="kResp">-</div></div>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>날짜</th><th class="r">낙상</th><th class="r">무움직임</th><th class="r">위급 신고</th><th class="r">복약 미확인</th><th class="r">확인까지 평균</th></tr></thead>
+      <tbody id="alarmRows"></tbody>
+      <tfoot id="alarmFoot"></tfoot>
+    </table>
+  </div>
+  <div class="muted" id="alarmNote"></div>
+  <h3 style="font-size:15px">보호자 메모</h3>
+  <ul class="notes" id="notes"></ul>
+  <div class="muted" id="noNotes">이번 주에 남긴 메모가 없어요.</div>
+</section>
+
+<!-- 2. 보행 훈련 (예시) -->
+<section class="card">
+  <div class="head"><h2>2. 리듬 큐잉 보행 (F3)</h2><span class="badge demo">예시 데이터</span></div>
+  <div class="kpis" id="walkKpis"></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>날짜</th><th class="r">훈련 횟수</th><th>훈련 시간</th><th class="r">평균 박자</th><th class="r">멈춤 후 재출발</th></tr></thead>
+    <tbody id="walkRows"></tbody>
+  </table></div>
+</section>
+
+<!-- 3. 발성 훈련 (예시) -->
+<section class="card">
+  <div class="head"><h2>3. 발성 훈련 (F4)</h2><span class="badge demo">예시 데이터</span></div>
+  <div class="kpis" id="voiceKpis"></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>날짜</th><th>하루 최고 목소리 크기</th><th>목표 대비</th></tr></thead>
+    <tbody id="voiceRows"></tbody>
+  </table></div>
+</section>
+
+<!-- 4. 복약 (예시) -->
+<section class="card">
+  <div class="head"><h2>4. 복약 (F1)</h2><span class="badge demo">예시 데이터</span></div>
+  <div class="kpis" id="medKpis"></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>날짜</th><th>복용 확인 (하루 4회)</th></tr></thead>
+    <tbody id="medRows"></tbody>
+  </table></div>
+</section>
+
+<footer>PD-Dog는 치료를 대신하는 의료기기가 아니라, 전문가가 정한 훈련을 집에서 이어가도록 돕는 보조 도구예요.<br>
+<span class="noprint">"예시 데이터" 항목은 로봇과 연결되면 실제 기록으로 바뀌어요.</span></footer>
+</div>
+
+<script src="/demo-data.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const CRIT = ["camera", "no_motion", "touch", "voice"];
+const KIND_NAME = {camera: "낙상 감지", no_motion: "움직임 없음", touch: "위급 신고 (터치)",
+                   voice: '위급 신고 ("도와줘")', medication_missed: "복약 미확인", test: "테스트"};
+function el(tag, text, className){
+  const e = document.createElement(tag);
+  if (text !== undefined) e.textContent = text;
+  if (className) e.className = className;
+  return e;
+}
+function fmtDuration(ms){
+  if (ms == null || ms < 0) return "-";
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}초` : `${Math.floor(s / 60)}분 ${s % 60}초`;
+}
+const val = (n, unit) => { const d = el("span"); d.append(String(n), el("small", unit)); return d; };
+const kpi = (label, n, unit) => { const k = el("div", undefined, "kpi"); k.append(el("div", label, "label")); const v = el("div", undefined, "value"); v.append(val(n, unit)); k.append(v); return k; };
+const numTd = n => el("td", String(n), "r" + (n ? "" : " zero"));
+function barTd(value, max, text){
+  const td = el("td"), wrap = el("div", undefined, "barcell"), bar = el("div", undefined, "bar"), fill = el("div", undefined, "fill");
+  fill.style.width = Math.max(0, Math.min(100, value / max * 100)) + "%";
+  bar.append(fill); wrap.append(bar, el("b", text)); td.append(wrap); return td;
+}
+
+// 최근 7일 (오래된 날 → 오늘), 브라우저 현지 시간 기준
+const days = Array.from({length: 7}, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (6 - i)); return d; });
+const dayLabel = (d, i) => `${d.getMonth() + 1}/${d.getDate()} (${"일월화수목금토"[d.getDay()]})${i === 6 ? " 오늘" : ""}`;
+$("period").textContent = `${days[0].toLocaleDateString("ko-KR")} ~ ${days[6].toLocaleDateString("ko-KR")} · 작성 ${new Date().toLocaleString("ko-KR")}`;
+
+/* ---------- 1. 안전 알람 (서버 실제 기록) ---------- */
+let report = null;
+async function load(){
+  try{
+    const res = await fetch("/api/report", {cache: "no-store"});
+    if (res.status === 401){ location.href = "/login"; return; }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    report = await res.json();
+    renderAlarms();
+  }catch(e){
+    $("alarmNote").textContent = "서버에서 기록을 불러오지 못했어요: " + e.message;
+  }
+}
+function renderAlarms(){
+  const inc = $("incSim").checked;
+  const start = days[0].getTime();
+  const events = report.events.filter(e => e.source !== "test" && (inc || !e.simulated) && new Date(e.created_at).getTime() >= start);
+  const dayIdx = e => { const d = new Date(e.created_at); d.setHours(0, 0, 0, 0); return days.findIndex(x => x.getTime() === d.getTime()); };
+  const rows = days.map(() => ({camera: 0, no_motion: 0, sos: 0, med: 0, resp: []}));
+  events.forEach(e => {
+    const i = dayIdx(e); if (i < 0) return;
+    const r = rows[i];
+    if (e.source === "camera") r.camera++;
+    else if (e.source === "no_motion") r.no_motion++;
+    else if (e.source === "touch" || e.source === "voice") r.sos++;
+    else if (e.source === "medication_missed") r.med++;
+    if (e.acknowledged_at) r.resp.push(new Date(e.acknowledged_at) - new Date(e.created_at));
+  });
+  const avg = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+  $("alarmRows").replaceChildren(...rows.map((r, i) => {
+    const tr = el("tr");
+    tr.append(el("td", dayLabel(days[i], i)), numTd(r.camera), numTd(r.no_motion), numTd(r.sos), numTd(r.med), el("td", fmtDuration(avg(r.resp)), "r"));
+    return tr;
+  }));
+  const sum = k => rows.reduce((s, r) => s + r[k], 0);
+  const allResp = rows.flatMap(r => r.resp);
+  const foot = el("tr");
+  foot.append(el("td", "합계"), numTd(sum("camera")), numTd(sum("no_motion")), numTd(sum("sos")), numTd(sum("med")), el("td", fmtDuration(avg(allResp)), "r"));
+  $("alarmFoot").replaceChildren(foot);
+
+  const crit = events.filter(e => CRIT.includes(e.source)).length;
+  $("kCrit").replaceChildren(val(crit, "건"));
+  $("kMed").replaceChildren(val(sum("med"), "건"));
+  $("kResp").textContent = fmtDuration(avg(allResp));
+  const simCount = report.events.filter(e => e.simulated).length;
+  $("alarmNote").textContent = (inc ? "시연 기록을 포함한 결과예요. " : (simCount ? `시연 기록 ${simCount}건은 빠져 있어요 (위의 "시연 기록 포함"으로 볼 수 있어요). ` : ""))
+    + "테스트 알람은 집계에서 빠져요." + (report.truncated ? " 기록이 너무 많아 최근 일부만 집계했어요." : "");
+
+  const noted = events.filter(e => e.note);
+  $("notes").replaceChildren(...noted.map(e => {
+    const li = el("li");
+    const head = el("div", `${new Date(e.created_at).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"numeric", minute:"2-digit"})} · ${KIND_NAME[e.source] || e.source}`, "muted");
+    if (e.simulated) head.append(el("span", "시연", "sim"));
+    li.append(head, el("div", e.note));
+    return li;
+  }));
+  $("noNotes").hidden = noted.length > 0;
+}
+$("incSim").addEventListener("change", () => report && renderAlarms());
+load();
+
+/* ---------- 2~4. 예시 데이터 ---------- */
+const W = window.PD_DEMO.week;
+const total = a => a.reduce((s, x) => s + x, 0);
+
+$("walkKpis").replaceChildren(kpi("주간 훈련 횟수", total(W.walkSessions), "회"), kpi("주간 훈련 시간", total(W.walkMinutes), "분"),
+  kpi("평균 박자 (이번 주 마지막 날)", W.walkBpm.at(-1), "보/분"), kpi("멈춤 후 재출발", total(W.restarts), "회"));
+const maxMin = Math.max(...W.walkMinutes);
+$("walkRows").replaceChildren(...days.map((d, i) => {
+  const tr = el("tr");
+  tr.append(el("td", dayLabel(d, i)), numTd(W.walkSessions[i]), barTd(W.walkMinutes[i], maxMin, `${W.walkMinutes[i]}분`),
+            el("td", `${W.walkBpm[i]}보/분`, "r"), numTd(W.restarts[i]));
+  return tr;
+}));
+
+const hitDays = W.voiceDb.filter(v => v >= W.voiceTarget).length;
+$("voiceKpis").replaceChildren(kpi("이번 주 목표", W.voiceTarget, "dB"), kpi("주간 최고", Math.max(...W.voiceDb), "dB"),
+  kpi("목표 달성", hitDays, "/7일"), kpi("첫날 대비", "+" + (W.voiceDb.at(-1) - W.voiceDb[0]), "dB"));
+$("voiceRows").replaceChildren(...days.map((d, i) => {
+  const v = W.voiceDb[i], tr = el("tr");
+  // 막대 = 목표 대비 비율 (0부터 시작해야 크기를 속이지 않아요)
+  tr.append(el("td", dayLabel(d, i)), barTd(v, W.voiceTarget, `${v}dB`),
+            el("td", v >= W.voiceTarget ? "✓ 달성" : `목표까지 ${W.voiceTarget - v}dB`, v >= W.voiceTarget ? "hit" : ""));
+  return tr;
+}));
+
+const taken = total(W.dosesTaken), planned = 4 * 7;
+$("medKpis").replaceChildren(kpi("주간 복용률", Math.round(taken / planned * 100), "%"), kpi("복용 확인", `${taken}/${planned}`, "회"));
+$("medRows").replaceChildren(...days.map((d, i) => {
+  const tr = el("tr");
+  tr.append(el("td", dayLabel(d, i)), barTd(W.dosesTaken[i], 4, `${W.dosesTaken[i]}/4`));
+  return tr;
+}));
+</script>
+</body>
+</html>

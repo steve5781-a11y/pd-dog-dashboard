@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PD-Dog 로그인</title>
+<style>
+:root{
+  --bg:#f3f2ee; --panel:#fff; --panel-2:#f8f7f4; --ink:#1b2220; --muted:#6b7570;
+  --line:#e3e1db; --brand:#0e7c6b; --brand-soft:#e2f2ee; --crit:#c92a2a; --crit-soft:#fdeaea; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#121614; --panel:#1a1f1d; --panel-2:#202624; --ink:#e7ece9; --muted:#97a29d;
+    --line:#2d3431; --brand:#4fd1b5; --brand-soft:#15302a; --crit:#ff6b6b; --crit-soft:#381c1c; color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;font-size:15px;line-height:1.5}
+.card{width:min(380px,calc(100vw - 32px));background:var(--panel);border:1px solid var(--line);border-radius:18px;
+  padding:28px 24px;display:grid;gap:18px}
+.brand{display:flex;gap:12px;align-items:center}
+.logo{width:44px;height:44px;border-radius:12px;background:var(--brand-soft);display:grid;place-items:center;font-size:24px}
+h1{margin:0;font-size:20px}
+.muted{color:var(--muted);font-size:13.5px}
+label{display:grid;gap:6px;font-weight:600}
+input{font:inherit;border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:var(--panel-2);color:var(--ink)}
+button{font:inherit;cursor:pointer;border:1px solid var(--brand);border-radius:10px;background:var(--brand);color:#fff;
+  font-weight:800;padding:12px}
+:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+.err{background:var(--crit-soft);color:var(--crit);border-radius:10px;padding:10px 12px;font-weight:600;font-size:14px}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">🐕</div>
+    <div>
+      <h1>PD-Dog 돌봄 대시보드</h1>
+      <div class="muted">관리자 로그인</div>
+    </div>
+  </div>
+  <div class="err" id="err" role="alert" hidden></div>
+  <form method="post" action="/login">
+    <div style="display:grid;gap:14px">
+      <label>아이디 <input name="username" autocomplete="username" required autofocus></label>
+      <label>비밀번호 <input name="password" type="password" autocomplete="current-password" required></label>
+      <button type="submit">로그인</button>
+    </div>
+  </form>
+  <div class="muted">비밀번호를 잊었으면 서버 컴퓨터에서 <code>python server.py --set-password</code> 로 새로 정하세요.</div>
+</main>
+<script>
+const MESSAGES = {
+  wrong: "아이디 또는 비밀번호가 맞지 않아요.",
+  locked: "여러 번 틀려서 1분 동안 로그인이 막혔어요. 잠시 뒤 다시 해 주세요.",
+};
+const e = new URLSearchParams(location.search).get("e");
+if (MESSAGES[e]){ const box = document.getElementById("err"); box.textContent = MESSAGES[e]; box.hidden = false; }
+</script>
+</body>
+</html>

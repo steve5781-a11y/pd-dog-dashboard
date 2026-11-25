@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PD-Dog 돌봄 대시보드</title>
+<style>
+/* 외부 글꼴·라이브러리 없이 동작 (라즈베리파이가 인터넷 없이도 쓸 수 있게).
+   색은 역할별로만: 초록=정상, 빨강=위급, 주황=주의·예시, 청록=브랜드, 파랑=그래프 한 줄. */
+:root{
+  --bg:#f3f2ee; --panel:#fff; --panel-2:#f8f7f4; --ink:#1b2220; --ink-2:#46514d; --muted:#6b7570;
+  --line:#e3e1db; --brand:#0e7c6b; --brand-soft:#e2f2ee;
+  --ok:#2b8a3e; --ok-soft:#e8f6ec; --crit:#c92a2a; --crit-soft:#fdeaea; --warn:#a85400; --warn-soft:#fff1e0;
+  --series:#3a6fd8; --laser:#e03131; --shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#121614; --panel:#1a1f1d; --panel-2:#202624; --ink:#e7ece9; --ink-2:#c2cbc7; --muted:#97a29d;
+    --line:#2d3431; --brand:#4fd1b5; --brand-soft:#15302a;
+    --ok:#69db7c; --ok-soft:#15291b; --crit:#ff6b6b; --crit-soft:#381c1c; --warn:#ffa94d; --warn-soft:#33240f;
+    --series:#7aa5ff; --laser:#ff6b6b; --shadow:none; color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;font-size:15px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding:16px;display:grid;gap:16px}
+h1,h2,h3,p{margin:0}
+.muted{color:var(--muted);font-size:13.5px}
+button,input{font:inherit}
+button{cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:9px 14px}
+button:disabled{opacity:.5;cursor:default}
+a{color:var(--brand)}
+:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+[hidden]{display:none!important}
+.num{font-variant-numeric:tabular-nums}
+
+/* 머리글 */
+header{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:44px;height:44px;border-radius:12px;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:24px}
+.brand h1{font-size:21px;letter-spacing:-.01em}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);
+  border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:600;white-space:nowrap;text-decoration:none;color:var(--ink)}
+a.chip{border-color:var(--brand);color:var(--brand)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.ok{background:var(--ok)} .dot.crit{background:var(--crit)} .dot.warn{background:var(--warn)}
+
+/* 경고 띠 */
+.banner{border-radius:12px;padding:10px 14px;font-weight:600}
+.banner.offline{background:var(--crit);color:#fff}
+.banner.sound{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+
+/* 상단: 상태 + 오늘 요약 */
+.top{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px}
+@media (max-width:860px){.top{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}
+#status{border-width:2px;display:grid;gap:12px;align-content:start}
+#status .big{font-size:30px;font-weight:800;letter-spacing:-.01em}
+#status.ok{border-color:var(--ok);background:linear-gradient(180deg,var(--ok-soft),var(--panel) 70%)}
+#status.ok .big{color:var(--ok)}
+#status.alarm{border-color:var(--crit);background:var(--crit-soft);animation:pulse 1.2s ease-in-out infinite}
+#status.alarm .big{color:var(--crit)}
+#status.warn{border-color:var(--warn);background:var(--warn-soft)}
+#status.warn .big{color:var(--warn)}
+#status.unknown{border-color:var(--muted)}
+#status.unknown .big{color:var(--muted)}
+@keyframes pulse{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--crit) 25%,transparent)}}
+@media (prefers-reduced-motion: reduce){#status.alarm{animation:none}}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+
+/* 확인이 필요한 알람 + 메모 */
+.event{display:grid;gap:10px;border:2px solid var(--crit);border-radius:12px;padding:12px 14px;background:var(--panel)}
+.event.warn{border-color:var(--warn)}
+.event .what{font-weight:800;color:var(--crit)}
+.event.warn .what{color:var(--warn)}
+.event .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.event input{flex:1;min-width:160px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel-2);color:var(--ink)}
+.quick{display:flex;flex-wrap:wrap;gap:6px}
+.quick button{font-size:12.5px;padding:3px 10px;border-radius:999px;background:var(--panel-2)}
+.ack{background:var(--crit);color:#fff;border-color:var(--crit);font-size:18px;font-weight:800;padding:10px 24px;min-width:110px}
+.event.warn .ack{background:var(--warn);border-color:var(--warn)}
+
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px}
+.tile .label{font-size:12.5px;color:var(--muted);font-weight:600}
+.tile .value{font-size:26px;font-weight:800;line-height:1.2;margin-top:2px}
+.tile .value small{font-size:13px;font-weight:600;color:var(--muted);margin-left:2px}
+
+/* 시연 패널 */
+details.demo{border:1px dashed var(--brand);border-radius:16px;background:var(--panel);padding:0 18px}
+details.demo summary{cursor:pointer;padding:14px 0;font-weight:700;list-style:none;display:flex;gap:8px;align-items:center}
+details.demo summary::-webkit-details-marker{display:none}
+details.demo summary::after{content:"펼치기 ▾";margin-left:auto;font-size:12.5px;color:var(--muted);font-weight:600}
+details.demo[open] summary::after{content:"접기 ▴"}
+.demo-buttons{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;padding-bottom:12px}
+.demo-buttons button{text-align:left;display:grid;gap:2px;padding:10px 12px}
+.demo-buttons button b{font-size:14.5px}
+.demo-buttons button span{font-size:12px;color:var(--muted)}
+
+/* 기능 카드 */
+.section-head{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;justify-content:space-between}
+.section-head h2{font-size:17px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px}
+@media (max-width:400px){.grid{grid-template-columns:1fr}}
+.fcard{display:grid;gap:12px;align-content:start}
+.fhead{display:flex;align-items:center;gap:10px}
+.ficon{width:38px;height:38px;border-radius:10px;background:var(--brand-soft);display:grid;place-items:center;font-size:20px;flex:none}
+.fhead h3{font-size:16px}
+.fid{font-size:11.5px;font-weight:700;color:var(--brand);letter-spacing:.02em}
+.badge{margin-left:auto;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.badge.live{background:var(--ok-soft);color:var(--ok)}
+.badge.demo{background:var(--warn-soft);color:var(--warn)}
+.badge.info{background:var(--panel-2);color:var(--muted);border:1px solid var(--line)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat .label{font-size:12px;color:var(--muted)}
+.stat .value{font-size:20px;font-weight:800}
+.stat .value small{font-size:12px;color:var(--muted);font-weight:600;margin-left:1px}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+.flow span{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:3px 8px}
+.flow b{color:var(--muted);font-weight:400}
+.note{font-size:13px;color:var(--ink-2);background:var(--panel-2);border-radius:10px;padding:8px 10px}
+.live-line{display:flex;justify-content:space-between;align-items:center;font-size:13.5px;border-top:1px solid var(--line);padding-top:10px}
+
+/* 복약 일정 */
+.doses{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.doses li{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px}
+.doses .t{font-weight:800;width:52px}
+.doses .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doses .s{margin-left:auto;font-size:12.5px;font-weight:700;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.s.done{background:var(--ok-soft);color:var(--ok)} .s.now{background:var(--warn-soft);color:var(--warn)}
+.s.later{background:var(--panel-2);color:var(--muted)}
+
+/* 리듬 큐잉 미리보기 */
+.floor{position:relative;height:84px;border-radius:12px;background:
+  repeating-linear-gradient(90deg,var(--panel-2) 0 11.5%,var(--line) 11.5% 12.5%);border:1px solid var(--line);overflow:hidden}
+.step{position:absolute;top:50%;width:12.5%;text-align:center;transform:translateY(-50%);font-size:12px;color:var(--muted)}
+.step .foot{font-size:22px;display:block;filter:grayscale(1);opacity:.35;transition:all .1s}
+.step.on{color:var(--ink);font-weight:700}
+.step.on .foot{filter:none;opacity:1}
+.laser{position:absolute;bottom:8px;width:16px;height:6px;border-radius:50%;background:var(--laser);
+  box-shadow:0 0 10px 3px color-mix(in srgb,var(--laser) 60%,transparent);opacity:0;transition:left .08s linear}
+.laser.flash{opacity:1}
+.metro{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.metro input[type=range]{flex:1;min-width:140px;accent-color:var(--brand)}
+.bpm{font-size:22px;font-weight:800;min-width:96px}
+.bpm small{font-size:12px;color:var(--muted);font-weight:600}
+
+/* 발성 그래프 */
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart .grid-line{stroke:var(--line);stroke-width:1}
+.chart .axis-text{fill:var(--muted);font-size:11px}
+.chart .target{stroke:var(--ink-2);stroke-width:1.5;stroke-dasharray:4 4}
+.chart .target-text{fill:var(--ink-2);font-size:11px;font-weight:700}
+.chart .series{fill:none;stroke:var(--series);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .pt{fill:var(--series);stroke:var(--panel);stroke-width:2}
+.chart .hit{fill:transparent;cursor:pointer}
+.tooltip{position:absolute;pointer-events:none;background:var(--ink);color:var(--panel);font-size:12px;
+  border-radius:8px;padding:5px 8px;white-space:nowrap;transform:translate(-50%,-110%)}
+
+/* 배터리 */
+.meter{display:grid;gap:4px}
+.meter .row{display:flex;justify-content:space-between;font-size:13.5px}
+.meter .bar{height:10px;border-radius:99px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden}
+.meter .fill{height:100%;border-radius:99px;background:var(--brand)}
+ul.plain{margin:0;padding-left:18px;display:grid;gap:4px;font-size:13.5px}
+
+/* 로봇 연결 */
+.conn{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.conn li{display:flex;align-items:center;gap:8px;font-size:14px}
+.conn li b{margin-left:auto;font-weight:700}
+.alert-line{font-size:13px;font-weight:700;border-radius:10px;padding:6px 10px}
+.alert-line.warn{background:var(--warn-soft);color:var(--warn)}
+.alert-line.crit{background:var(--crit-soft);color:var(--crit)}
+.meter .fill.low{background:var(--crit)}
+
+/* 자세(스틱맨) */
+.pose-box{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:center}
+.pose-box svg{width:100%;height:auto;background:var(--panel-2);border:1px solid var(--line);border-radius:12px}
+.pose-box .bone{stroke:var(--ink);stroke-width:4;stroke-linecap:round}
+.pose-box .joint{fill:var(--panel);stroke:var(--ink);stroke-width:2}
+.pose-box .head{fill:var(--panel);stroke:var(--ink);stroke-width:3}
+.pose-box .floorline{stroke:var(--muted);stroke-width:2;stroke-dasharray:6 5}
+.pose-box.danger .bone,.pose-box.danger .head,.pose-box.danger .joint{stroke:var(--crit)}
+.pose-state{font-size:22px;font-weight:800}
+.pose-state.ok{color:var(--ok)} .pose-state.crit{color:var(--crit)} .pose-state.muted{color:var(--muted)}
+
+/* 따라오기 거리 */
+.gauge{position:relative;height:14px;border-radius:99px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden}
+.gauge .fill{position:absolute;inset:0 auto 0 0;background:var(--brand);border-radius:99px;transition:width .3s}
+.gauge .fill.far{background:var(--warn)}
+.gauge .limit{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
+.spark{display:block;width:100%;height:auto}
+.spark .line{fill:none;stroke:var(--series);stroke-width:2;stroke-linejoin:round}
+.spark .limitline{stroke:var(--ink-2);stroke-width:1;stroke-dasharray:4 3}
+
+/* 기록 표 */
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td.memo{white-space:normal;min-width:160px;color:var(--ink-2)}
+th{color:var(--muted);font-weight:600;font-size:12.5px}
+.st{display:inline-block;border-radius:999px;padding:1px 8px;font-size:12px;font-weight:700}
+.st.new{background:var(--crit);color:#fff} .st.acknowledged{background:var(--ok-soft);color:var(--ok)}
+.sim{display:inline-block;margin-left:6px;border-radius:999px;padding:0 6px;font-size:11px;font-weight:700;border:1px dashed var(--brand);color:var(--brand)}
+#message{min-height:1.4em}
+footer{font-size:12.5px;color:var(--muted);text-align:center;padding:8px 0 24px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">
+    <div class="logo" aria-hidden="true">🐕</div>
+    <div>
+      <h1>PD-Dog 돌봄 대시보드</h1>
+      <div class="muted">파킨슨병 재활돌봄로봇 · 보호자용</div>
+    </div>
+  </div>
+  <div class="chips">
+    <a class="chip" href="/report">📄 치료사용 주간 리포트</a>
+    <a class="chip" href="/settings">⚙️ 설정</a>
+    <span class="chip"><span class="dot" id="srvDot"></span><span id="srvText">서버 연결 중…</span></span>
+    <span class="chip"><span class="dot warn" id="robotDot"></span><span id="robotText">로봇 연결 전</span></span>
+    <span class="chip num" id="clock">--:--</span>
+    <form method="post" action="/logout" style="display:contents"><button class="chip" type="submit">🚪 로그아웃</button></form>
+  </div>
+</header>
+
+<div class="banner offline" id="offline" hidden role="alert">
+  ⚠ 서버 연결 끊김 — 지금은 알람을 받을 수 없어요. 서버(server.py)가 켜져 있는지 확인하세요.
+</div>
+<div class="banner sound" id="soundOff">
+  <span>🔇 알람 소리가 꺼져 있어요. 위급 상황에 소리로 알림을 받으려면 켜 주세요.</span>
+  <button id="soundBtn2">🔔 소리 켜기</button>
+</div>
+
+<!-- 1. 지금 상태 + 오늘 요약 (실시간) -->
+<section class="top">
+  <div class="card" id="status" aria-live="assertive">
+    <div class="muted">지금 상태</div>
+    <p class="big" id="statusText">확인 중…</p>
+    <div id="statusSub" class="muted"></div>
+    <div id="active" style="display:grid;gap:10px"></div>
+    <div class="actions"><button id="soundBtn" aria-pressed="false">🔔 알람 소리 켜기</button></div>
+    <div class="muted" id="message" aria-live="polite"></div>
+  </div>
+
+  <div class="card" style="display:grid;gap:12px;align-content:start">
+    <div class="fhead"><h3>오늘 요약</h3><span class="badge live">실시간</span></div>
+    <div class="tiles">
+      <div class="tile"><div class="label">오늘 알람</div><div class="value num" id="tToday">0<small>건</small></div></div>
+      <div class="tile"><div class="label">확인 안 한 알람</div><div class="value num" id="tOpen">0<small>건</small></div></div>
+      <div class="tile"><div class="label">확인까지 평균</div><div class="value num" id="tResp">-</div></div>
+      <div class="tile"><div class="label">마지막 알람</div><div class="value num" id="tLast" style="font-size:18px">-</div></div>
+    </div>
+    <div class="muted">🔴 위급 = 낙상 · 위급 신고 · 무움직임 &nbsp; 🟠 주의 = 복약 미확인</div>
+  </div>
+</section>
+
+<!-- 2. 시연 패널 (발표용) -->
+<details class="demo" id="demoPanel">
+  <summary>🎬 시연 패널 <span class="muted" style="font-weight:400">발표할 때 로봇 대신 신호를 보내 봐요 · 기록에 "시연"으로 표시돼요</span></summary>
+  <div class="demo-buttons">
+    <button data-source="camera" data-conf="0.91"><b>🧍 낙상 감지</b><span>F6 · 카메라가 쓰러진 자세 감지</span></button>
+    <button data-source="touch"><b>🆘 터치 3초 신고</b><span>F2 · 머리 터치 센서</span></button>
+    <button data-source="voice" data-conf="0.93"><b>🗣️ "도와줘"</b><span>F2 · 등록된 목소리</span></button>
+    <button data-source="no_motion"><b>⏸️ 움직임 없음</b><span>F7 · 오래 움직이지 않음</span></button>
+    <button data-source="medication_missed"><b>💊 복약 미확인</b><span>F1 · 30분 동안 확인 없음</span></button>
+    <button data-source="test"><b>🧪 테스트 알람</b><span>소리·화면 점검용</span></button>
+  </div>
+  <div class="muted" style="margin:4px 0 8px">🤖 가상 로봇 — 진짜 로봇 대신 상태(배터리·거리·자세)를 몇 초마다 보내요</div>
+  <div class="demo-buttons">
+    <button id="vrToggle" aria-pressed="false"><b>🤖 가상 로봇 켜기</b><span>연결·배터리·따라오기 거리·자세</span></button>
+    <button id="vrFall"><b>🤸 넘어지는 장면</b><span>스틱맨이 쓰러진 뒤 낙상 알람</span></button>
+    <button id="vrLowBat"><b>🔋 배터리 부족</b><span>MechDog 배터리 15%</span></button>
+    <button id="vrFar"><b>🚶 사용자가 멀어짐</b><span>따라오는 거리가 한도를 넘음</span></button>
+    <button id="vrTip"><b>🐕 로봇 넘어짐</b><span>로봇 몸이 기울어짐</span></button>
+  </div>
+</details>
+
+<!-- 3. 기능별 현황 -->
+<section style="display:grid;gap:12px">
+  <div class="section-head">
+    <h2>로봇 기능 현황</h2>
+    <span class="muted"><span class="badge live" style="margin:0">실시간</span> 서버에 들어온 실제 기록 ·
+      <span class="badge demo" style="margin:0">예시 데이터</span> 로봇과 연결하면 실제 값으로 바뀌어요</span>
+  </div>
+
+  <div class="grid">
+    <!-- F6·F7 낙상 감지 -->
+    <article class="card fcard">
+      <div class="fhead"><div class="ficon">🧍</div><div><div class="fid">F6 · F7</div><h3>낙상 감지</h3></div><span class="badge live">실시간</span></div>
+      <div class="stats">
+        <div class="stat"><div class="label">오늘 낙상</div><div class="value num" id="sFall">0<small>건</small></div></div>
+        <div class="stat"><div class="label">무움직임</div><div class="value num" id="sNoMotion">0<small>건</small></div></div>
+        <div class="stat"><div class="label">마지막 감지</div><div class="value num" id="sFallLast" style="font-size:15px">-</div></div>
+      </div>
+      <div class="flow" aria-label="낙상 처리 순서">
+        <span>📷 쓰러진 자세 감지</span><b>→</b><span>🐕 다가가서 "괜찮으세요?"</span><b>→</b><span>🔔 대답 없으면 알림</span>
+      </div>
+      <div class="note">카메라 영상은 로봇 안에서만 처리하고 <b>저장·전송하지 않아요.</b> 보호자에게는 알림만 와요.</div>
+    </article>
+
+    <!-- F6 자세 보기 (스틱맨) -->
+    <article class="card fcard">
+      <div class="fhead"><div class="ficon">🦴</div><div><div class="fid">F6</div><h3>자세 보기 (영상 없음)</h3></div><span class="badge info" id="poseBadge">카메라 연결 전</span></div>
+      <div class="pose-box" id="poseBox">
+        <svg viewBox="0 0 200 200" id="poseSvg" role="img" aria-label="환자 자세 (관절 점)"></svg>
+        <div style="display:grid;gap:6px">
+          <div class="muted">지금 자세</div>
+          <div class="pose-state muted" id="poseState">-</div>
+          <div class="muted" id="poseAge"></div>
+        </div>
+      </div>
+      <div class="muted">카메라 영상 대신 AI가 찾은 <b>관절 점 17개</b>만 받아서 그려요. 얼굴이나 방 모습은 보이지 않아요.</div>
+    </article>
+
+    <!-- F2 위급 신고 -->
+    <article class="card fcard">
+      <div class="fhead"><div class="ficon">🆘</div><div><div class="fid">F2</div><h3>위급 신고</h3></div><span class="badge live">실시간</span></div>
+      <div class="stats">
+        <div class="stat"><div class="label">터치 3초</div><div class="value num" id="sTouch">0<small>건</small></div></div>
+        <div class="stat"><div class="label">"도와줘"</div><div class="value num" id="sVoice">0<small>건</small></div></div>
+        <div class="stat"><div class="label">마지막 신고</div><div class="value num" id="sSosLast" style="font-size:15px">-</div></div>
+      </div>
+      <ul class="plain">
+        <li>머리 터치 센서를 <b>3초</b> 누르거나 <b>"도와줘"</b>라고 말하면 바로 알림이 와요.</li>
+        <li>라즈베리파이가 꺼져도 터치 신고는 로봇이 직접 <b>경보음</b>을 울려요.</li>
+      </ul>
+    </article>
+
+    <!-- F1 복약 -->
+    <article class="card fcard">
+      <div class="fhead"><div class="ficon">💊</div><div><div class="fid">F1</div><h3>복약 알림</h3></div><span class="badge demo">복용 여부 예시</span></div>
+      <ul class="doses" id="doses"></ul>
+      <div class="muted">시간은 <a href="/settings">⚙️ 설정</a>에서 바꿔요. 로봇이 다가가 알려주고, 머리를 터치하면 복용 확인. <b>30분</b> 동안 확인이 없으면 보호자에게 알림이 가요.</div>
+      <div class="live-line"><span>오늘 복약 미확인 알림 <span class="badge live" style="margin-left:4px">실시간</span></span><b class="num" id="sMed">0건</b></div>
+    </article>
+
+    <!-- F3 리듬 큐잉 보행 -->
+    <article class="card fcard">
+      <div class="fhead"><div class="ficon">👣</div><div><div class="fid">F3</div><h3>리듬 큐잉 보행 · 레이저 박자</h3></div><span class="badge info">미리보기</span></div>
+      <div class="floor" id="floor" aria-label="레이저 박자 미리보기"></div>
+      <div class="metro">
+        <div class="bpm num"><span id="bpmVal">96</span> <small>보/분</small></div>
+        <input type="range" id="bpm" min="80" max="110" step="1" value="96" aria-label="박자 (분당 걸음 수)">
+        <button id="metroBtn" aria-pressed="false">▶ 박자 시작</button>
+      </div>
+      <div class="muted">로봇이 앞장서 걸으며 박자음(🔊)과 바닥의 레이저 점(🔴)으로 걸음 박자를 알려줘요.</div>
+      <div style="display:grid;gap:6px;border-top:1px solid var(--line);padding-top:10px">
+        <div class="fhead" style="gap:6px"><b style="font-size:14px">따라오는 거리 (ToF 센서)</b><span class="badge info" id="followBadge">로봇 연결 전</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <span class="value num" style="font-size:22px;font-weight:800" id="followVal">-</span>
+          <span class="muted"><span id="followState"></span> 한도 <b id="followMax">-</b>cm</span>
+        </div>
+        <div class="gauge" aria-hidden="true"><div class="fill" id="followFill" style="width:0"></div><div class="limit" id="followLimit"></div></div>
+        <svg class="spark" id="followSpark" viewBox="0 0 300 50" role="img" aria-label="최근 1분 따라오는 거리"></svg>
+        <div class="muted" id="laserLine">레이저: -</div>
+      </div>
+      <div class="live-line"><span>오늘 보행 훈련 <span class="badge demo" style="margin-left:4px">예시 데이터</span></span><b class="num" id="walkToday">-</b></div>
+    </article>
+
+    <!-- F4 발성 훈련 (+F5) -->
+    <article class="card fcard">
+      <div class="fhead"><div class="ficon">🗣️</div><div><div class="fid">F4 · F5</div><h3>발성 훈련 (크게 말하기)</h3></div><span class="badge demo">예시 데이터</span></div>
+      <div class="stats">
+        <div class="stat"><div class="label">오늘 최고</div><div class="value num" id="vToday">-</div></div>
+        <div class="stat"><div class="label">이번 주 목표</div><div class="value num" id="vTarget">-</div></div>
+        <div class="stat"><div class="label">목표 달성</div><div class="value num" id="vHit">-</div></div>
+      </div>
+      <div class="chart" id="voiceChart"><div class="muted" style="margin-bottom:4px">최근 7일 · 하루 최고 목소리 크기 (dB)</div></div>
+      <div class="muted">🎙️ 등록된 환자 목소리에만 반응해요 (인식 성공률 <b id="vId">-</b>). 목표는 주마다 조금씩 올라가요.</div>
+    </article>
+
+    <!-- 로봇 연결 · 배터리 -->
+    <article class="card fcard">
+      <div class="fhead"><div class="ficon">🤖</div><div><div class="fid">UART · 전원</div><h3>로봇 연결 · 배터리</h3></div><span class="badge info" id="robotBadge">로봇 연결 전</span></div>
+      <ul class="conn">
+        <li><span class="dot" id="cPiDot"></span>라즈베리파이 (두뇌)<b id="cPi">-</b></li>
+        <li><span class="dot" id="cEspDot"></span>MechDog 몸 (ESP32 · USB 케이블)<b id="cEsp">-</b></li>
+        <li><span class="dot"></span>지금 모드<b id="cMode">-</b></li>
+      </ul>
+      <div class="meter">
+        <div class="row"><span>MechDog 배터리</span><b class="num" id="batDog">-</b></div>
+        <div class="bar"><div class="fill" id="batDogBar" style="width:0"></div></div>
+      </div>
+      <div class="meter">
+        <div class="row"><span>라즈베리파이 배터리</span><b class="num" id="batPi">-</b></div>
+        <div class="bar"><div class="fill" id="batPiBar" style="width:0"></div></div>
+      </div>
+      <div class="alert-line warn" id="tempLine" hidden></div>
+      <div class="muted" id="robotHint">로봇(라즈베리파이)이 상태를 보내면 여기에 실제 값이 나와요. 배터리가 20% 아래로 내려가면 🟠 주의 알람이 와요.</div>
+    </article>
+  </div>
+</section>
+
+<!-- 4. 기록 -->
+<section class="card" style="display:grid;gap:10px">
+  <div class="fhead"><h3>알람 기록</h3><span class="badge live">실시간</span></div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>발생 시각</th><th>종류</th><th>상태</th><th>확인까지</th><th>메모</th></tr></thead>
+      <tbody id="history"></tbody>
+    </table>
+  </div>
+  <div class="muted" id="emptyHistory">아직 기록이 없어요.</div>
+</section>
+
+<footer>PD-Dog는 치료를 대신하는 의료기기가 아니라, 집에서 재활 훈련을 이어가도록 돕는 보조 도구예요.</footer>
+</div>
+
+<script src="/demo-data.js"></script>
+<script>
+const POLL_MS = 1000;           // 1초마다 서버에 새 알람이 있는지 물어봐요
+const OFFLINE_AFTER_MS = 5000;  // 5초 동안 답이 없으면 "연결 끊김"
+const REQUEST_TIMEOUT_MS = 3000;
+// 신호 출처 → 화면 이름·등급. crit=위급(빨강·경보음), warn=주의(주황·짧은 알림음)
+const KIND = {
+  camera:            {name: "낙상 감지",            title: "낙상 감지!",   icon: "🧍", level: "crit"},
+  no_motion:         {name: "움직임 없음",          title: "움직임 없음!", icon: "⏸️", level: "crit"},
+  touch:             {name: "위급 신고 (터치)",     title: "위급 신고!",   icon: "🆘", level: "crit"},
+  voice:             {name: '위급 신고 ("도와줘")', title: "위급 신고!",   icon: "🆘", level: "crit"},
+  medication_missed: {name: "복약 미확인",          title: "복약 미확인",  icon: "💊", level: "warn"},
+  test:              {name: "테스트",               title: "테스트 알람",  icon: "🧪", level: "crit"},
+  low_battery:       {name: "배터리 부족",          title: "로봇 배터리 부족", icon: "🔋", level: "warn"},
+  robot_tipped:      {name: "로봇 넘어짐",          title: "로봇이 넘어졌어요", icon: "🐕", level: "warn"},
+};
+const QUICK_NOTES = {   // 알람 종류별 빠른 메모
+  crit:              ["직접 확인함, 이상 없음", "다친 곳 있음, 병원 연락", "로봇 오작동"],
+  medication_missed: ["전화로 복용 확인함", "복용 시간 조정", "로봇 오작동"],
+  low_battery:       ["충전기 연결함", "곧 충전 예정"],
+  robot_tipped:      ["로봇 다시 세움", "로봇 오작동"],
+};
+const quickNotes = ev => QUICK_NOTES[ev.source] || QUICK_NOTES.crit;
+const STATUS_LABEL = {new: "미확인", acknowledged: "확인됨"};
+
+const $ = id => document.getElementById(id);
+let lastOk = 0, lastData = "", alarmLevel = null, soundOn = false, audioCtx = null;
+const drafts = new Map();   // 알람별로 쓰던 메모 (화면이 다시 그려져도 지워지지 않게)
+
+const kind = s => KIND[s] || {name: s, title: "알람", icon: "⚠️", level: "crit"};
+const fmtDateTime = iso => iso ? new Date(iso).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"numeric", minute:"2-digit"}) : "-";
+const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("ko-KR", {hour:"numeric", minute:"2-digit"}) : "-";
+const fmtConf = c => c === null || c === undefined ? "" : ` · 신뢰도 ${Math.round(c * 100)}%`;
+const isToday = iso => new Date(iso).toDateString() === new Date().toDateString();
+function fmtDuration(ms){
+  if (ms == null || ms < 0) return "-";
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}초` : `${Math.floor(s / 60)}분 ${s % 60}초`;
+}
+function el(tag, text, className){
+  const e = document.createElement(tag);
+  if (text !== undefined) e.textContent = text;   // textContent만 써서 이상한 글자가 코드로 실행되지 않게
+  if (className) e.className = className;
+  return e;
+}
+function setCount(id, n){ $(id).replaceChildren(String(n), el("small", "건")); }
+
+async function api(method, path, body){
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try{
+    const res = await fetch(path, {
+      method, cache: "no-store", signal: ctrl.signal,
+      headers: body ? {"Content-Type": "application/json"} : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (res.status === 401){ location.href = "/login"; throw new Error("로그인이 필요해요"); }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+    return data;
+  } finally { clearTimeout(timer); }
+}
+
+/* ---------- 실시간 알람 ---------- */
+async function refresh(){
+  try{
+    const data = await api("GET", "/api/falls");
+    lastOk = Date.now();
+    const text = JSON.stringify(data);
+    if (text !== lastData){ lastData = text; render(data); }
+  }catch(e){ /* 실패는 updateConnection()이 표시 */ }
+  updateConnection();
+}
+
+function updateConnection(){
+  const offline = Date.now() - lastOk > OFFLINE_AFTER_MS;
+  $("offline").hidden = !offline;
+  $("srvDot").className = "dot " + (offline ? "crit" : "ok");
+  $("srvText").textContent = offline ? "서버 연결 끊김" : "서버 연결됨";
+  if (offline){
+    // 연결이 끊기면 예전 '정상' 표시를 믿으면 안 되므로 '알 수 없음'으로 바꿔요.
+    $("status").className = "card unknown";
+    $("statusText").textContent = "❔ 상태 알 수 없음";
+    $("statusSub").textContent = "서버와 연결이 끊겨서 알람 여부를 확인할 수 없어요";
+    lastData = "";
+  }
+}
+
+function renderActive(active){
+  // 입력 중인 메모 칸이 있으면 지우지 않고 그대로 둬요.
+  const focusedId = document.activeElement?.dataset?.memoFor;
+  $("active").replaceChildren(...active.map(ev => {
+    const k = kind(ev.source);
+    const box = el("div", undefined, "event" + (k.level === "warn" ? " warn" : ""));
+    const head = el("div");
+    const what = el("div", `${k.icon} ${k.name}`, "what");
+    if (ev.simulated) what.append(el("span", "시연", "sim"));
+    head.append(what, el("div", `${fmtDateTime(ev.created_at)}${fmtConf(ev.confidence)}`, "muted"));
+
+    const input = el("input");
+    input.type = "text"; input.maxLength = 200; input.placeholder = "메모 (선택) · 어떻게 조치했는지 적어 두세요";
+    input.dataset.memoFor = ev.id;
+    input.value = drafts.get(ev.id) || "";
+    input.addEventListener("input", () => drafts.set(ev.id, input.value));
+    const btn = el("button", "확인", "ack");
+    btn.addEventListener("click", () => acknowledge(ev.id, btn, input.value));
+    input.addEventListener("keydown", e => { if (e.key === "Enter") btn.click(); });
+    const row = el("div", undefined, "row"); row.append(input, btn);
+
+    const quick = el("div", undefined, "quick");
+    quickNotes(ev).forEach(t => {
+      const q = el("button", t);
+      q.type = "button";
+      q.addEventListener("click", () => { input.value = t; drafts.set(ev.id, t); input.focus(); });
+      quick.append(q);
+    });
+    box.append(head, row, quick);
+    return box;
+  }));
+  if (focusedId) document.querySelector(`[data-memo-for="${focusedId}"]`)?.focus();
+}
+
+function render(data){
+  const events = data.events;
+  const active = events.filter(e => e.status === "new");
+  const hasCrit = active.some(e => kind(e.source).level === "crit");
+  alarmLevel = active.length ? (hasCrit ? "crit" : "warn") : null;
+
+  $("status").className = "card " + (alarmLevel === "crit" ? "alarm" : alarmLevel === "warn" ? "warn" : "ok");
+  $("statusText").textContent = !alarmLevel ? "✅ 정상"
+    : active.length === 1 ? `${alarmLevel === "crit" ? "🚨" : "⚠️"} ${kind(active[0].source).title}`
+    : `🚨 확인할 알람 ${active.length}건`;
+  $("statusSub").textContent = !alarmLevel ? "확인이 필요한 알람이 없어요"
+    : alarmLevel === "crit" ? "환자 상태를 직접 확인한 뒤 \"확인\"을 눌러 주세요"
+    : active.every(e => e.source === "medication_missed") ? "약을 드셨는지 확인한 뒤 \"확인\"을 눌러 주세요"
+    : "로봇 상태를 확인한 뒤 \"확인\"을 눌러 주세요";
+  document.title = alarmLevel === "crit" ? "🚨 위급! — PD-Dog" : alarmLevel === "warn" ? "⚠️ 주의 — PD-Dog" : "PD-Dog 돌봄 대시보드";
+  renderActive(active);
+
+  // 오늘 요약 (최근 기록 기준)
+  const today = events.filter(e => isToday(e.created_at));
+  setCount("tToday", today.length);
+  setCount("tOpen", data.unacknowledged);
+  const acked = today.filter(e => e.acknowledged_at);
+  const avg = acked.length ? acked.reduce((s, e) => s + (new Date(e.acknowledged_at) - new Date(e.created_at)), 0) / acked.length : null;
+  $("tResp").textContent = fmtDuration(avg);
+  $("tLast").textContent = events.length ? `${fmtTime(events[0].created_at)} ${kind(events[0].source).name}` : "-";
+
+  // 기능 카드 (실시간 부분)
+  const count = src => today.filter(e => e.source === src).length;
+  const lastOf = srcs => { const e = events.find(e => srcs.includes(e.source)); return e ? fmtDateTime(e.created_at) : "-"; };
+  setCount("sFall", count("camera"));
+  setCount("sNoMotion", count("no_motion"));
+  $("sFallLast").textContent = lastOf(["camera", "no_motion"]);
+  setCount("sTouch", count("touch"));
+  setCount("sVoice", count("voice"));
+  $("sSosLast").textContent = lastOf(["touch", "voice"]);
+  $("sMed").textContent = count("medication_missed") + "건";
+
+  // 기록 표
+  $("history").replaceChildren(...events.map(ev => {
+    const k = kind(ev.source);
+    const tr = el("tr");
+    const kindTd = el("td", `${k.icon} ${k.name}`);
+    if (ev.simulated) kindTd.append(el("span", "시연", "sim"));
+    const st = el("td"); st.append(el("span", STATUS_LABEL[ev.status] || ev.status, "st " + ev.status));
+    const took = ev.acknowledged_at ? fmtDuration(new Date(ev.acknowledged_at) - new Date(ev.created_at)) : "-";
+    tr.append(el("td", fmtDateTime(ev.created_at)), kindTd, st, el("td", took), el("td", ev.note || "", "memo"));
+    return tr;
+  }));
+  $("emptyHistory").hidden = events.length > 0;
+}
+
+async function acknowledge(id, btn, note){
+  btn.disabled = true;
+  try{
+    await api("POST", `/api/falls/${id}/ack`, note.trim() ? {note: note.trim()} : undefined);
+    drafts.delete(id);
+    $("message").textContent = note.trim() ? "확인 처리하고 메모를 남겼어요." : "확인 처리했어요.";
+  }catch(e){
+    btn.disabled = false;
+    $("message").textContent = "확인 처리에 실패했어요: " + e.message;
+  }
+  refresh();
+}
+
+// 시연 패널: 로봇 대신 신호 보내기 (기록에 "시연"으로 남아요)
+document.querySelectorAll("#demoPanel [data-source]").forEach(b => b.addEventListener("click", async () => {
+  const body = {source: b.dataset.source, simulated: true};
+  if (b.dataset.conf) body.confidence = Number(b.dataset.conf);
+  try{
+    const r = await api("POST", "/api/falls", body);
+    $("message").textContent = r.duplicate
+      ? `이미 확인 안 된 "${kind(body.source).name}" 알람이 있어서 새로 만들지 않았어요 (30초 중복 방지).`
+      : `시연: "${kind(body.source).name}" 신호를 보냈어요.`;
+  }catch(e){ $("message").textContent = "신호 전송 실패: " + e.message; }
+  refresh();
+  window.scrollTo({top: 0, behavior: "smooth"});
+}));
+
+/* ---------- 소리: 오디오 파일 없이 브라우저가 직접 만들어요 ---------- */
+function ensureAudio(){
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx.resume();
+}
+function beep(freq, startAt, duration, volume = 0.15, type = "square"){
+  const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+  osc.type = type; osc.frequency.value = freq; gain.gain.value = volume;
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(startAt); osc.stop(startAt + duration);
+}
+async function toggleSound(){
+  await ensureAudio();   // 브라우저는 버튼을 한 번 누른 뒤에만 소리를 허락해요
+  soundOn = !soundOn;
+  if (soundOn) beep(660, audioCtx.currentTime, 0.12);
+  $("soundBtn").textContent = soundOn ? "🔕 알람 소리 끄기" : "🔔 알람 소리 켜기";
+  $("soundBtn").setAttribute("aria-pressed", String(soundOn));
+  $("soundOff").hidden = soundOn;
+}
+$("soundBtn").addEventListener("click", toggleSound);
+$("soundBtn2").addEventListener("click", toggleSound);
+let soundTick = 0;
+setInterval(() => {   // 위급: 매초 '삐-뽀', 주의: 3초마다 짧은 '띵'
+  if (!alarmLevel || !soundOn || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  if (alarmLevel === "crit"){ beep(880, t, 0.25); beep(660, t + 0.35, 0.25); }
+  else if (soundTick++ % 3 === 0){ beep(740, t, 0.15, 0.1, "sine"); }
+}, 1000);
+
+/* ---------- F3 레이저 박자 미리보기 ---------- */
+const STEPS = 8;
+const floor = $("floor");
+const laser = el("div", undefined, "laser");
+const steps = Array.from({length: STEPS}, (_, i) => {
+  const s = el("div", undefined, "step");
+  s.style.left = (i * 100 / STEPS) + "%";
+  const foot = el("span", "🦶", "foot");
+  if (i % 2) foot.style.transform = "scaleX(-1)";
+  s.append(foot, el("span", i % 2 ? "오른발" : "왼발"));
+  floor.append(s);
+  return s;
+});
+floor.append(laser);
+let metroTimer = null, beat = 0;
+function tickMetro(){
+  steps.forEach((s, i) => s.classList.toggle("on", i === beat));
+  laser.style.left = `calc(${(beat + 0.5) * 100 / STEPS}% - 8px)`;
+  laser.classList.add("flash");
+  setTimeout(() => laser.classList.remove("flash"), 140);
+  if (audioCtx) beep(beat % 4 === 0 ? 1000 : 760, audioCtx.currentTime, 0.05, 0.12, "sine");
+  beat = (beat + 1) % STEPS;
+}
+function startMetro(){
+  clearInterval(metroTimer);
+  metroTimer = setInterval(tickMetro, 60000 / Number($("bpm").value));
+}
+$("bpm").addEventListener("input", () => {
+  $("bpmVal").textContent = $("bpm").value;
+  if (metroTimer) startMetro();
+});
+$("metroBtn").addEventListener("click", async () => {
+  if (metroTimer){
+    clearInterval(metroTimer); metroTimer = null;
+    steps.forEach(s => s.classList.remove("on"));
+    $("metroBtn").textContent = "▶ 박자 시작";
+  } else {
+    await ensureAudio(); beat = 0; tickMetro(); startMetro();
+    $("metroBtn").textContent = "■ 박자 멈춤";
+  }
+  $("metroBtn").setAttribute("aria-pressed", String(!!metroTimer));
+});
+
+/* ---------- 설정 (치료사·보호자가 /settings 에서 정한 값) ---------- */
+const D = window.PD_DEMO, W7 = D.week;
+let settings = null;
+async function loadSettings(){
+  let s;
+  try{ s = await api("GET", "/api/settings"); }
+  catch(e){ if (settings) return; s = {doses: D.doses, walk_bpm: 96, voice_target_db: W7.voiceTarget, follow_max_cm: 150}; }
+  if (JSON.stringify(s) === JSON.stringify(settings)) return;
+  settings = s;
+  renderDoses();
+  renderVoiceChart(s.voice_target_db);
+  $("followMax").textContent = s.follow_max_cm;
+  if (!metroTimer){ $("bpm").value = s.walk_bpm; $("bpmVal").textContent = s.walk_bpm; }
+}
+
+function renderDoses(){   // 일정은 설정값. 복용 여부는 로봇 연결 전이라 지금 시각 기준 예시예요.
+  const now = new Date();
+  $("doses").replaceChildren(...settings.doses.map(([hm, label]) => {
+    const [h, m] = hm.split(":").map(Number);
+    const at = new Date(now); at.setHours(h, m, 0, 0);
+    const diffMin = (now - at) / 60000;
+    const taken = new Date(at.getTime() + 3 * 60000).toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit", hour12:false});
+    const [cls, text] = diffMin >= 30 ? ["done", `✓ 복용 확인 ${taken}`] : diffMin >= 0 ? ["now", "⏰ 알림 중"] : ["later", "예정"];
+    const li = el("li");
+    li.append(el("span", hm, "t num"), el("span", label, "name"), el("span", text, "s " + cls));
+    return li;
+  }));
+}
+$("walkToday").textContent = `${W7.walkSessions.at(-1)}회 · ${W7.walkMinutes.at(-1)}분 · 평균 ${W7.walkBpm.at(-1)}보/분`;
+$("vId").textContent = D.voiceId.successRate + "%";
+
+function renderVoiceChart(target){   // F4: 최근 7일 하루 최고 dB(예시) + 목표선(설정값). 한 줄이라 범례 없이 제목으로 설명
+  const values = W7.voiceDb;
+  const box = $("voiceChart");
+  box.replaceChildren(el("div", "최근 7일 · 하루 최고 목소리 크기 (dB)", "muted"));
+  const labels = values.map((_, i) => {
+    if (i === values.length - 1) return "오늘";
+    const d = new Date(); d.setDate(d.getDate() - (values.length - 1 - i));
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  });
+  $("vToday").replaceChildren(String(values.at(-1)), el("small", "dB"));
+  $("vTarget").replaceChildren(String(target), el("small", "dB"));
+  $("vHit").replaceChildren(String(values.filter(v => v >= target).length), el("small", "/7일"));
+
+  const W = 320, H = 150, L = 30, R = 18, T = 12, B = 22, lo = 55, hi = 75;
+  const x = i => L + i * (W - L - R) / (values.length - 1);
+  const y = v => T + (hi - v) * (H - T - B) / (hi - lo);
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "최근 7일 하루 최고 목소리 크기: " + values.map((v, i) => `${labels[i]} ${v}dB`).join(", ") + `. 목표 ${target}dB`);
+  const add = (tag, attrs, text) => {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (text) n.textContent = text;
+    svg.append(n); return n;
+  };
+  [55, 65, 75].forEach(v => {
+    add("line", {x1: L, x2: W - R, y1: y(v), y2: y(v), class: "grid-line"});
+    add("text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", class: "axis-text"}, String(v));
+  });
+  add("line", {x1: L, x2: W - R, y1: y(target), y2: y(target), class: "target"});
+  add("text", {x: L + 4, y: y(target) - 5, "text-anchor": "start", class: "target-text"}, `목표 ${target}dB`);
+  add("polyline", {points: values.map((v, i) => `${x(i)},${y(v)}`).join(" "), class: "series"});
+  const tip = el("div", undefined, "tooltip"); tip.hidden = true;
+  values.forEach((v, i) => {
+    add("circle", {cx: x(i), cy: y(v), r: 4.5, class: "pt"});
+    add("text", {x: x(i), y: H - 6, "text-anchor": "middle", class: "axis-text"}, labels[i]);
+    const hit = add("rect", {x: x(i) - 18, y: T, width: 36, height: H - T - B, class: "hit", tabindex: 0});
+    const show = () => {
+      const scale = svg.getBoundingClientRect().width / W;
+      tip.textContent = `${labels[i]} · ${v}dB ${v >= target ? "(목표 달성)" : `(목표까지 ${target - v}dB)`}`;
+      tip.style.left = (x(i) * scale) + "px";
+      tip.style.top = (y(v) * scale + box.querySelector(".muted").offsetHeight) + "px";
+      tip.hidden = false;
+    };
+    hit.addEventListener("mouseenter", show); hit.addEventListener("focus", show);
+    hit.addEventListener("mouseleave", () => tip.hidden = true); hit.addEventListener("blur", () => tip.hidden = true);
+  });
+  box.append(svg, tip);
+}
+
+/* ---------- 로봇 연결 · 배터리 · 따라오기 거리 (라즈베리파이가 보낸 상태) ---------- */
+const MODE_LABEL = {idle: "대기", walking: "보행 훈련 중", voice: "발성 훈련 중", medication: "복약 알림 중",
+                    approaching: "환자에게 가는 중", charging: "충전 중"};
+const followHist = [];   // [받은 시각, cm] 최근 60초
+const fmtAge = s => s < 2 ? "방금" : s < 60 ? `${Math.round(s)}초 전` : `${Math.round(s / 60)}분 전`;
+const setDot = (id, cls) => $(id).className = "dot " + (cls || "");
+function setBadge(id, text, cls){ $(id).textContent = text; $(id).className = "badge " + cls; }
+function sourceBadge(id, data, offText){   // 실시간 / 시연 / 연결 끊김 / 연결 전
+  const v = data && (data.status || data.pose);
+  if (!v) return setBadge(id, offText, "info");
+  if (!data.online) return setBadge(id, "연결 끊김", "demo");
+  setBadge(id, v.simulated ? "시연" : "실시간", v.simulated ? "demo" : "live");
+}
+function meter(valId, barId, pct, extra){
+  $(barId).style.width = (pct ?? 0) + "%";
+  $(barId).classList.toggle("low", pct != null && pct < 20);
+  $(valId).textContent = pct == null ? "-" : Math.round(pct) + "%" + (extra || "");
+}
+
+async function refreshRobot(){
+  let r;
+  try{ r = await api("GET", "/api/robot"); }catch(e){ return; }
+  const s = r.status, online = r.online;
+  setDot("robotDot", !s ? "warn" : online ? "ok" : "crit");
+  $("robotText").textContent = !s ? "로봇 연결 전" : !online ? "로봇 연결 끊김" : s.simulated ? "가상 로봇 연결됨" : "로봇 연결됨";
+  sourceBadge("robotBadge", r, "로봇 연결 전");
+  renderFollow(s, online);
+  if (!s) return;
+
+  setDot("cPiDot", online ? "ok" : "crit");
+  $("cPi").textContent = online ? `응답 중 · ${fmtAge(r.age_seconds)}` : `끊김 · 마지막 신호 ${fmtAge(r.age_seconds)}`;
+  setDot("cEspDot", !online ? "" : s.esp32_ok ? "ok" : "crit");
+  $("cEsp").textContent = !online ? "알 수 없음" : s.esp32_ok ? "응답 중" : "응답 없음";
+  $("cMode").textContent = online ? (MODE_LABEL[s.mode] || "-") : "-";
+  meter("batDog", "batDogBar", s.dog_battery_pct);
+  meter("batPi", "batPiBar", s.pi_battery_pct, s.pi_charging ? " · 충전 중 ⚡" : "");
+  if (s.pi_battery_pct == null) $("batPi").textContent = "측정 안 됨 (X1200을 쓰면 표시)";
+  const hot = online && s.pi_temp_c != null && s.pi_temp_c >= 75;   // 평소엔 숨기고 뜨거울 때만 알려요
+  $("tempLine").hidden = !hot;
+  if (hot){
+    $("tempLine").className = "alert-line " + (s.pi_temp_c >= 80 ? "crit" : "warn");
+    $("tempLine").textContent = `🌡️ 라즈베리파이 ${Math.round(s.pi_temp_c)}°C — 과열 주의, 쿨러를 확인하세요`;
+  }
+  $("robotHint").textContent = online
+    ? "배터리가 20% 아래로 내려가면 🟠 주의 알람이 와요."
+    : "⚠ 로봇 신호가 10초 넘게 없어요. 이때는 로봇의 알림을 받을 수 없어요. 라즈베리파이 전원과 와이파이를 확인하세요.";
+}
+
+function renderFollow(s, online){
+  const max = settings ? settings.follow_max_cm : 150;
+  const cm = s && online ? s.follow_distance_cm : null;
+  if (!s) setBadge("followBadge", "로봇 연결 전", "info");
+  else if (!online) setBadge("followBadge", "연결 끊김", "demo");
+  else if (cm == null) setBadge("followBadge", "측정 안 하는 중", "info");
+  else setBadge("followBadge", s.simulated ? "시연" : "실시간", s.simulated ? "demo" : "live");
+  $("followLimit").style.left = `calc(${Math.min(100, max / 3)}% - 1px)`;
+  if (cm == null){
+    $("followVal").textContent = "-"; $("followFill").style.width = "0"; $("followState").textContent = "";
+  } else {
+    const far = cm > max;
+    $("followVal").textContent = `${Math.round(cm)}cm`;
+    $("followFill").style.width = Math.min(100, cm / 3) + "%";
+    $("followFill").classList.toggle("far", far);
+    $("followState").textContent = far ? "🟠 멀어져서 로봇이 기다리는 중 ·" : "✓ 잘 따라오는 중 ·";
+    followHist.push([Date.now(), cm]);
+  }
+  while (followHist.length && Date.now() - followHist[0][0] > 60000) followHist.shift();
+  drawSpark(max);
+  $("laserLine").textContent = !(s && online) ? "레이저: -"
+    : `레이저: ${s.laser_on ? "🔴 켜짐" : "꺼짐"}${s.bpm ? ` · 박자 ${Math.round(s.bpm)}보/분` : ""}`;
+}
+
+function drawSpark(max){   // 최근 1분 따라오는 거리 (한 줄) + 한도 점선
+  const NS = "http://www.w3.org/2000/svg", svg = $("followSpark"), now = Date.now();
+  const y = v => 46 - Math.min(v, 300) / 300 * 42;
+  const line = (attrs) => { const n = document.createElementNS(NS, attrs.tag); delete attrs.tag; for (const k in attrs) n.setAttribute(k, attrs[k]); return n; };
+  const nodes = [line({tag: "line", x1: 0, x2: 300, y1: y(max), y2: y(max), class: "limitline"})];
+  if (followHist.length > 1)
+    nodes.push(line({tag: "polyline", class: "line",
+      points: followHist.map(([t, v]) => `${300 - (now - t) / 60000 * 300},${y(v)}`).join(" ")}));
+  svg.replaceChildren(...nodes);
+}
+
+/* ---------- F6 자세 보기: 관절 점 17개로 스틱맨 그리기 (영상 없음) ---------- */
+const BONES = [[5,6],[5,7],[7,9],[6,8],[8,10],[5,11],[6,12],[11,12],[11,13],[13,15],[12,14],[14,16],[0,5],[0,6]];
+const POSE_LABEL = {none: ["사람이 안 보여요", "muted"], standing: ["서 있음", "ok"], sitting: ["앉아 있음", "ok"],
+                    falling: ["넘어지는 중!", "crit"], lying: ["바닥에 누워 있음", "crit"]};
+let lastPose = "";
+async function refreshPose(){
+  let p;
+  try{ p = await api("GET", "/api/robot/pose"); }catch(e){ return; }
+  sourceBadge("poseBadge", p, "카메라 연결 전");
+  $("poseAge").textContent = p.pose ? (p.online ? `업데이트 ${fmtAge(p.age_seconds)}` : `마지막 신호 ${fmtAge(p.age_seconds)}`) : "";
+  const pose = p.pose && p.online ? p.pose : null;
+  const key = JSON.stringify(pose);
+  if (key === lastPose) return;
+  lastPose = key;
+  const [label, cls] = pose ? POSE_LABEL[pose.state] : ["-", "muted"];
+  $("poseState").textContent = label;
+  $("poseState").className = "pose-state " + cls;
+  $("poseBox").classList.toggle("danger", cls === "crit");
+
+  const NS = "http://www.w3.org/2000/svg", svg = $("poseSvg");
+  const mk = (tag, attrs) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); return n; };
+  const nodes = [mk("line", {x1: 10, x2: 190, y1: 184, y2: 184, class: "floorline"})];
+  const pts = pose ? pose.keypoints : [];
+  const ok = i => pts[i] && pts[i][2] >= 0.3;   // 신뢰도 낮은 점은 그리지 않아요
+  const P = i => [pts[i][0] * 200, pts[i][1] * 200];
+  BONES.forEach(([a, b]) => { if (ok(a) && ok(b)) nodes.push(mk("line", {x1: P(a)[0], y1: P(a)[1], x2: P(b)[0], y2: P(b)[1], class: "bone"})); });
+  pts.forEach((_, i) => { if (i > 4 && ok(i)) nodes.push(mk("circle", {cx: P(i)[0], cy: P(i)[1], r: 3.5, class: "joint"})); });
+  if (ok(0)) nodes.push(mk("circle", {cx: P(0)[0], cy: P(0)[1], r: 10, class: "head"}));
+  if (!pose) nodes.push(mk("text", {x: 100, y: 100, "text-anchor": "middle", fill: "currentColor", "font-size": 12, opacity: .6}));
+  svg.replaceChildren(...nodes);
+  if (!pose) svg.lastChild.textContent = "카메라 신호 없음";
+}
+
+/* ---------- 🤖 가상 로봇 (시연용): 진짜 로봇이 보낼 신호를 흉내 내요 ---------- */
+const STAND = [[.50,.12],[.52,.10],[.48,.10],[.54,.11],[.46,.11],[.58,.24],[.42,.24],[.61,.38],[.39,.38],[.62,.50],[.38,.50],
+               [.55,.52],[.45,.52],[.56,.70],[.44,.70],[.56,.88],[.44,.88]];
+const LIE = STAND.map(([x, y]) => [0.12 + (y - 0.08) * 0.9, 0.80 + (x - 0.5) * 0.6]);   // 옆으로 누운 자세
+const clamp01 = v => Math.min(1, Math.max(0, v));
+const vr = {timers: [], battery: 64, piBattery: 78, lowBatUntil: 0, farUntil: 0, tip: false, fallStart: 0};
+const post = (path, body) => api("POST", path, body).catch(() => {});
+
+function vrPose(){
+  const now = Date.now();
+  let state = "standing", pts;
+  if (vr.fallStart){
+    const t = (now - vr.fallStart) / 1200;
+    if (t < 1){ state = "falling"; const e = t * t; pts = STAND.map(([x, y], i) => [x + (LIE[i][0] - x) * e, y + (LIE[i][1] - y) * e]); }
+    else { state = "lying"; pts = LIE; }
+  } else {
+    pts = STAND.map(([x, y], i) => [x + 0.012 * Math.sin(now / 500 + (i > 12 ? Math.PI : 0)), y]);   // 걷는 듯 살짝 흔들림
+  }
+  post("/api/robot/pose", {state, simulated: true, keypoints: pts.map(([x, y]) => [clamp01(x), clamp01(y), 0.9])});
+}
+function vrStatus(){
+  const now = Date.now(), max = settings ? settings.follow_max_cm : 150;
+  vr.battery = Math.max(25, vr.battery - 0.05);
+  vr.piBattery = Math.max(25, vr.piBattery - 0.03);
+  const follow = now < vr.farUntil ? max + 60 + 15 * Math.sin(now / 700) : Math.min(max - 15, 95 + 30 * Math.sin(now / 4000));
+  post("/api/robot/status", {
+    esp32_ok: true, simulated: true, mode: vr.fallStart ? "approaching" : "walking",
+    dog_battery_pct: now < vr.lowBatUntil ? 15 : Math.round(vr.battery), pi_battery_pct: Math.round(vr.piBattery), pi_charging: false,
+    pi_temp_c: 52 + 3 * Math.sin(now / 9000), follow_distance_cm: vr.fallStart ? null : Math.round(follow),
+    laser_on: !vr.fallStart, bpm: settings ? settings.walk_bpm : 96, robot_tipped: vr.tip,
+  });
+  vr.tip = false;
+}
+function vrSet(on){
+  vr.timers.forEach(clearInterval); vr.timers = [];
+  if (on){ vrStatus(); vrPose(); vr.timers = [setInterval(vrStatus, 2000), setInterval(vrPose, 400)]; }
+  $("vrToggle").firstChild.textContent = on ? "🤖 가상 로봇 끄기" : "🤖 가상 로봇 켜기";
+  $("vrToggle").setAttribute("aria-pressed", String(on));
+  $("message").textContent = on ? "가상 로봇을 켰어요. 아래 카드들이 '시연' 값으로 움직여요."
+                                : "가상 로봇을 껐어요. 10초 뒤 '로봇 연결 끊김'으로 바뀌어요.";
+}
+const vrOn = () => vr.timers.length > 0;
+const vrEnsure = () => { if (!vrOn()) vrSet(true); };
+$("vrToggle").addEventListener("click", () => vrSet(!vrOn()));
+$("vrFall").addEventListener("click", () => {
+  vrEnsure();
+  vr.fallStart = Date.now();
+  $("message").textContent = "시연: 스틱맨이 넘어져요. 곧 낙상 알람이 와요.";
+  setTimeout(() => post("/api/falls", {source: "camera", confidence: 0.92, simulated: true}).then(refresh), 2200);
+  setTimeout(() => { vr.fallStart = 0; }, 12000);   // 12초 뒤 다시 일어나요
+});
+$("vrLowBat").addEventListener("click", () => { vrEnsure(); vr.lowBatUntil = Date.now() + 15000; vrStatus(); setTimeout(refresh, 300);
+  $("message").textContent = "시연: MechDog 배터리가 15%로 떨어졌어요."; });
+$("vrFar").addEventListener("click", () => { vrEnsure(); vr.farUntil = Date.now() + 10000;
+  $("message").textContent = "시연: 사용자가 멀어져서 로봇이 기다려요 (10초)."; });
+$("vrTip").addEventListener("click", () => { vrEnsure(); vr.tip = true; vrStatus(); setTimeout(refresh, 300);
+  $("message").textContent = "시연: 로봇 몸이 넘어졌어요."; });
+
+/* ---------- 시계 + 주기 조회 ---------- */
+const tickClock = () => $("clock").textContent = new Date().toLocaleTimeString("ko-KR", {hour:"numeric", minute:"2-digit"});
+tickClock(); setInterval(tickClock, 1000);
+loadSettings(); setInterval(loadSettings, 15000);   // 설정 화면에서 바꾼 값을 15초 안에 반영
+(async function loop(){ await Promise.all([refresh(), refreshRobot()]); setTimeout(loop, POLL_MS); })();
+(async function poseLoop(){ await refreshPose(); setTimeout(poseLoop, 400); })();
+setInterval(updateConnection, 1000);
+</script>
+</body>
+</html>

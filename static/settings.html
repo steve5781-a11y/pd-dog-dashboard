@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PD-Dog 설정</title>
+<style>
+:root{
+  --bg:#f3f2ee; --panel:#fff; --panel-2:#f8f7f4; --ink:#1b2220; --ink-2:#46514d; --muted:#6b7570;
+  --line:#e3e1db; --brand:#0e7c6b; --brand-soft:#e2f2ee; --ok:#2b8a3e; --ok-soft:#e8f6ec;
+  --crit:#c92a2a; --crit-soft:#fdeaea; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#121614; --panel:#1a1f1d; --panel-2:#202624; --ink:#e7ece9; --ink-2:#c2cbc7; --muted:#97a29d;
+    --line:#2d3431; --brand:#4fd1b5; --brand-soft:#15302a; --ok:#69db7c; --ok-soft:#15291b;
+    --crit:#ff6b6b; --crit-soft:#381c1c; color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;font-size:15px;line-height:1.5}
+.wrap{max-width:760px;margin:0 auto;padding:16px;display:grid;gap:16px}
+h1,h2,p{margin:0}
+h1{font-size:22px} h2{font-size:17px}
+.muted{color:var(--muted);font-size:13.5px}
+a{color:var(--brand)}
+button,input{font:inherit}
+button{cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:9px 14px}
+:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;justify-content:space-between}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:12px}
+.fid{font-size:11.5px;font-weight:700;color:var(--brand)}
+input[type=text],input[type=time],input[type=number]{border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--panel-2);color:var(--ink)}
+.dose{display:flex;gap:8px;align-items:center}
+.dose input[type=text]{flex:1;min-width:0}
+.dose button{padding:8px 12px}
+.slider{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
+.slider input[type=range]{width:100%;accent-color:var(--brand)}
+.slider output{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;min-width:110px;text-align:right}
+.slider output small{font-size:13px;color:var(--muted);font-weight:600;margin-left:2px}
+.save{position:sticky;bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:0 4px 16px rgba(0,0,0,.08)}
+.primary{background:var(--brand);color:#fff;border-color:var(--brand);font-weight:800;padding:10px 22px}
+#msg{font-weight:600}
+#msg.ok{color:var(--ok)} #msg.err{color:var(--crit)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <div class="muted">PD-Dog 파킨슨병 재활돌봄로봇</div>
+    <h1>⚙️ 치료사·보호자 설정</h1>
+    <div class="muted">여기서 정한 값을 로봇이 가져가서 사용해요. 전문가가 정한 훈련 목표를 넣어 주세요.</div>
+  </div>
+  <a href="/">← 대시보드로</a>
+</header>
+
+<section class="card">
+  <div><div class="fid">F1</div><h2>💊 복약 시간</h2></div>
+  <div class="muted">로봇이 이 시간에 다가가 알려줘요. 30분 동안 터치 확인이 없으면 보호자에게 알림이 가요. (최대 8개)</div>
+  <div id="doses" style="display:grid;gap:8px"></div>
+  <div><button id="addDose" type="button">＋ 복약 시간 추가</button></div>
+</section>
+
+<section class="card">
+  <div><div class="fid">F3</div><h2>👣 리듬 큐잉 보행</h2></div>
+  <label class="slider">
+    <span>목표 박자 <span class="muted">· 분당 걸음 수 (80~110)</span></span>
+    <output id="bpmOut"></output>
+    <input type="range" id="bpm" min="80" max="110" step="1">
+  </label>
+  <label class="slider">
+    <span>따라오는 거리 한도 <span class="muted">· 이보다 멀어지면 로봇이 멈춰서 기다려요 (50~300cm)</span></span>
+    <output id="followOut"></output>
+    <input type="range" id="follow" min="50" max="300" step="10">
+  </label>
+</section>
+
+<section class="card">
+  <div><div class="fid">F4</div><h2>🗣️ 발성 훈련</h2></div>
+  <label class="slider">
+    <span>목표 목소리 크기 <span class="muted">· 이보다 크게 말해야 로봇이 반응해요 (50~90dB)</span></span>
+    <output id="voiceOut"></output>
+    <input type="range" id="voice" min="50" max="90" step="1">
+  </label>
+  <div class="muted">LSVT LOUD 방식처럼 주마다 조금씩(1~2dB) 올리는 걸 권해요.</div>
+</section>
+
+<div class="save">
+  <span id="msg" class="muted" aria-live="polite">불러오는 중…</span>
+  <button class="primary" id="saveBtn" type="button">💾 저장</button>
+</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+function el(tag, text, className){
+  const e = document.createElement(tag);
+  if (text !== undefined) e.textContent = text;
+  if (className) e.className = className;
+  return e;
+}
+function setMsg(text, kind){ $("msg").textContent = text; $("msg").className = kind || "muted"; }
+
+function doseRow(hm = "09:00", label = ""){
+  const row = el("div", undefined, "dose");
+  const time = el("input"); time.type = "time"; time.value = hm; time.required = true; time.setAttribute("aria-label", "복약 시각");
+  const name = el("input"); name.type = "text"; name.value = label; name.maxLength = 20; name.placeholder = "약 이름 (예: 아침 약)"; name.setAttribute("aria-label", "약 이름");
+  const del = el("button", "삭제"); del.type = "button";
+  del.addEventListener("click", () => { row.remove(); updateAdd(); dirty(); });
+  [time, name].forEach(i => i.addEventListener("input", dirty));
+  row.append(time, name, del);
+  return row;
+}
+function updateAdd(){ $("addDose").disabled = $("doses").children.length >= 8; }
+$("addDose").addEventListener("click", () => { $("doses").append(doseRow()); updateAdd(); dirty(); });
+
+const sliders = [["bpm", "bpmOut", "보/분"], ["follow", "followOut", "cm"], ["voice", "voiceOut", "dB"]];
+function showSlider(id, out, unit){ $(out).replaceChildren(String($(id).value), el("small", unit)); }
+sliders.forEach(([id, out, unit]) => $(id).addEventListener("input", () => { showSlider(id, out, unit); dirty(); }));
+function dirty(){ setMsg("저장하지 않은 변경이 있어요"); }
+
+function fill(s){
+  $("doses").replaceChildren(...s.doses.map(([hm, label]) => doseRow(hm, label)));
+  $("bpm").value = s.walk_bpm; $("follow").value = s.follow_max_cm; $("voice").value = s.voice_target_db;
+  sliders.forEach(args => showSlider(...args));
+  updateAdd();
+  setMsg(s.updated_at ? `마지막 저장: ${new Date(s.updated_at).toLocaleString("ko-KR")}` : "아직 저장한 적 없어요 (기본값)");
+}
+
+async function load(){
+  try{
+    const res = await fetch("/api/settings", {cache: "no-store"});
+    if (res.status === 401){ location.href = "/login"; return; }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    fill(await res.json());
+  }catch(e){ setMsg("설정을 불러오지 못했어요: " + e.message, "err"); }
+}
+
+$("saveBtn").addEventListener("click", async () => {
+  const body = {
+    doses: [...$("doses").children].map(r => { const [t, n] = r.querySelectorAll("input"); return [t.value, n.value]; }),
+    walk_bpm: Number($("bpm").value), follow_max_cm: Number($("follow").value), voice_target_db: Number($("voice").value),
+  };
+  $("saveBtn").disabled = true;
+  try{
+    const res = await fetch("/api/settings", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    if (res.status === 401){ location.href = "/login"; return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+    fill(data);
+    setMsg("✓ 저장했어요. 로봇이 다음에 설정을 가져갈 때 반영돼요.", "ok");
+  }catch(e){ setMsg("저장 실패: " + e.message, "err"); }
+  $("saveBtn").disabled = false;
+});
+load();
+</script>
+</body>
+</html>
